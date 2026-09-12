@@ -1,14 +1,15 @@
 # Velozity — Real-Time Client Project Dashboard
 
-Velozity is a role-based dashboard for managing clients, projects and tasks. It supports Admin, Project Manager and Developer roles, real-time activity updates, notifications, task filters and automatic overdue-task detection.
+Velozity is a role-based dashboard for managing clients, projects and tasks. It supports **Admin, Project Manager and Developer** roles, real-time activity updates, notifications, task filters and automatic overdue-task detection.
 
-The frontend is deployed on **Vercel**, while the backend runs on a Node.js-compatible server with PostgreSQL.
+The application uses **React + TypeScript** for the frontend, **Node.js + Express + Socket.io** for the backend, and **PostgreSQL + Prisma** for persistent data storage.
 
----
+The frontend is deployed on **Vercel**, while the continuously running backend and production PostgreSQL database are deployed on **Render**.
 
-## 1. Local Setup
 
-### Requirements
+# 1. Local Setup
+
+## Requirements
 
 Make sure the following are installed:
 
@@ -16,7 +17,9 @@ Make sure the following are installed:
 * Docker Desktop
 * npm
 
-### Step 1 — Start PostgreSQL
+---
+
+## Step 1 — Start PostgreSQL
 
 From the project root:
 
@@ -24,9 +27,13 @@ From the project root:
 docker-compose up -d
 ```
 
-This starts the PostgreSQL database required by the application.
+This starts the local PostgreSQL database required by the application.
 
-### Step 2 — Setup the Backend
+Docker is used for **local development only**. The production application uses PostgreSQL hosted on Render.
+
+---
+
+## Step 2 — Setup the Backend
 
 ```bash
 cd server
@@ -55,7 +62,9 @@ The backend will run on:
 http://localhost:4000
 ```
 
-### Step 3 — Setup the Frontend
+---
+
+## Step 3 — Setup the Frontend
 
 Open another terminal:
 
@@ -82,7 +91,9 @@ The frontend will normally be available at:
 http://localhost:5173
 ```
 
-### Demo Login
+---
+
+## Demo Login
 
 The seed script creates demo users for each role.
 
@@ -121,9 +132,9 @@ User
  ├── Project
  │     │
  │     └── Task
- │            │
- │            ├── ActivityLog
- │            └── Notification
+ │           │
+ │           ├── ActivityLog
+ │           └── Notification
  │
  └── Notification
 
@@ -132,49 +143,68 @@ Client
  └── Project
 ```
 
-### Main Relationships
+## Main Relationships
 
-**User**
+### User
 
 * Stores Admin, Project Manager and Developer accounts.
 * A user can own projects, be assigned tasks and receive notifications.
 
-**Client**
+### Client
 
 * Represents a client managed by the agency.
 * A client can have multiple projects.
 
-**Project**
+### Project
 
 * Belongs to a client.
 * Has a Project Manager as its owner.
 * Contains multiple tasks.
 
-**Task**
+### Task
 
 * Belongs to a project.
 * Can be assigned to a developer.
 * Contains information such as status, priority and due date.
 
-**ActivityLog**
+### ActivityLog
 
 * Stores important actions such as task status changes.
 * Used to display the activity feed and recover missed events.
 
-**Notification**
+### Notification
 
 * Stores notifications for individual users.
 * Used for unread counts and notification history.
 
-**RefreshToken**
+### RefreshToken
 
 * Stores hashed refresh tokens used for secure session management.
 
-Foreign-key relationships and delete rules are defined in the Prisma schema.
+Foreign-key relationships, indexes and delete rules are defined in the Prisma schema.
+
+Indexes are used on frequently queried fields to improve database lookup performance.
 
 ---
 
 # 3. Architectural Decisions
+
+## Why Express?
+
+I used **Express** for the backend because it is lightweight, widely used and works well with the project's REST API requirements.
+
+Express also integrates naturally with:
+
+* Middleware
+* JWT authentication
+* Role-based authorization
+* Prisma
+* Socket.io
+* Validation using Zod
+
+This keeps the backend structure simple and easy to maintain.
+
+---
 
 ## Why Socket.io?
 
@@ -185,7 +215,9 @@ For example:
 ```text
 Developer changes task
         ↓
-Backend updates database
+Backend validates request
+        ↓
+Database is updated
         ↓
 Activity is created
         ↓
@@ -218,7 +250,7 @@ It keeps the implementation lightweight while still allowing the check to run au
 
 The application uses a short-lived JWT access token and a refresh token.
 
-The access token is kept in frontend memory and is not stored in localStorage.
+The access token is kept in frontend memory and is not stored in `localStorage`.
 
 The refresh token is stored in an **HttpOnly cookie**.
 
@@ -244,7 +276,7 @@ This approach reduces the risk of exposing a long-lived authentication token thr
 
 ---
 
-## Role-Based Access
+# 4. Role-Based Access
 
 Access control is handled on the backend.
 
@@ -252,16 +284,159 @@ The frontend hides actions that a user cannot perform, but the backend also chec
 
 For example:
 
-* Admin can access everything.
-* Project Managers can access their own projects.
-* Developers can access their assigned tasks.
-* Developers can update task status but cannot modify unrelated task fields.
+* **Admin** can access everything.
+* **Project Managers** can access their own projects.
+* **Developers** can access their assigned tasks.
+* **Developers** can update task status but cannot modify unrelated task fields.
 
 This prevents users from bypassing frontend restrictions by directly calling the API.
 
 ---
 
-# 4. Known Limitations
+# 5. Deployment
+
+## Production Architecture
+
+The production application is deployed using **Vercel and Render**.
+
+```text
+                    ┌─────────────────────┐
+                    │       Browser       │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │       Vercel        │
+                    │   React + Vite      │
+                    └──────────┬──────────┘
+                               │
+                     REST / Socket.io
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │       Render        │
+                    │ Node.js + Express   │
+                    │     + Socket.io     │
+                    │     + node-cron     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │       Render        │
+                    │     PostgreSQL      │
+                    └─────────────────────┘
+```
+
+### Frontend — Vercel
+
+The React + Vite frontend is deployed on Vercel.
+
+Production frontend:
+
+```text
+https://velozity-dashboard-navy.vercel.app
+```
+
+The frontend receives the backend URL through the Vite environment variable:
+
+```text
+VITE_API_URL
+```
+
+For production, this points to the deployed Render backend.
+
+---
+
+## Backend — Render
+
+The backend is deployed as a continuously running **Node.js service on Render**.
+
+Production backend:
+
+```text
+https://velozity-server-uxwc.onrender.com
+```
+
+The Render service runs:
+
+```text
+Node.js
+Express
+Socket.io
+node-cron
+Prisma
+```
+
+The backend requires a continuously running process because Socket.io maintains WebSocket connections and `node-cron` runs scheduled background tasks.
+
+This is why the backend is hosted separately from Vercel's frontend deployment.
+
+The backend production environment contains configuration values such as:
+
+```text
+NODE_ENV=production
+PORT=4000
+DATABASE_URL=<Render PostgreSQL connection>
+CLIENT_URL=https://velozity-dashboard-navy.vercel.app
+JWT_ACCESS_SECRET=<secret>
+JWT_REFRESH_SECRET=<secret>
+```
+
+Secrets are stored as environment variables and are not committed to GitHub.
+
+---
+
+## Production Database — Render PostgreSQL
+
+The production application uses a PostgreSQL database hosted on Render.
+
+The database was migrated using:
+
+```bash
+npx prisma migrate deploy
+```
+
+The production database was then seeded using:
+
+```bash
+npm run db:seed
+```
+
+The seed creates the demo users, clients, projects, tasks, activity logs and notifications.
+
+Production database credentials are stored through the Render environment configuration and are not committed to the repository.
+
+---
+
+## Production Deployment Flow
+
+The deployment process is:
+
+```text
+GitHub
+   │
+   ├──────────────► Vercel
+   │                 │
+   │                 └── React + Vite frontend
+   │
+   └──────────────► Render
+                     │
+                     ├── Node.js + Express API
+                     ├── Socket.io
+                     ├── node-cron
+                     └── Prisma
+                            │
+                            ▼
+                     Render PostgreSQL
+```
+
+The frontend communicates with the Render backend using REST APIs and Socket.io.
+
+CORS is configured on the backend to allow requests from the deployed Vercel frontend.
+
+---
+
+# 6. Known Limitations
 
 The current version has a few limitations.
 
@@ -289,7 +464,9 @@ Login and other authentication endpoints should have rate limiting before being 
 
 ### Refresh-token cleanup
 
-Old revoked or expired refresh-token records are not automatically removed yet. A periodic cleanup job could be added later.
+Old revoked or expired refresh-token records are not automatically removed yet.
+
+A periodic cleanup job could be added later.
 
 ### Testing
 
@@ -297,44 +474,25 @@ The project contains automated tests, but the complete test suite and database m
 
 ---
 
-# 5. Deployment
+# 7. Security Considerations
 
-The frontend has been deployed using **Vercel**.
+The application follows several security practices:
 
-The production architecture is:
-
-```text
-                ┌──────────────────┐
-                │      Browser     │
-                └────────┬─────────┘
-                         │
-                         ▼
-                ┌──────────────────┐
-                │      Vercel      │
-                │ React + Vite     │
-                └────────┬─────────┘
-                         │
-                    REST / Socket.io
-                         │
-                         ▼
-                ┌──────────────────┐
-                │   Node.js API    │
-                │ Express + Socket │
-                └────────┬─────────┘
-                         │
-                         ▼
-                ┌──────────────────┐
-                │   PostgreSQL     │
-                └──────────────────┘
-```
-
-The frontend uses the production backend URL through the `VITE_API_URL` environment variable.
-
-The backend is kept separate from Vercel because Socket.io and the `node-cron` background job require a continuously running Node.js process.
+* JWT-based authentication
+* Short-lived access tokens
+* HttpOnly refresh-token cookies
+* Refresh-token rotation
+* Hashed refresh tokens in the database
+* Backend-side role-based authorization
+* Server-side request validation using Zod
+* CORS configuration
+* Helmet security middleware
+* Secrets stored in environment variables
+* No production database credentials committed to GitHub
 
 ---
 
-# 6. Summary
+# 8. Summary
 
 Velozity combines project management with real-time communication and role-based access.
 
@@ -346,6 +504,24 @@ The main technical decisions were made to keep the application simple while stil
 * Real-time updates with Socket.io
 * Automatic overdue-task checking
 * Persistent notifications
+* Server-side validation
 * A clear separation between frontend and backend
+* Production deployment using Vercel and Render
 
-The project can be run locally using Docker and npm, and the frontend is deployed on Vercel for production use.
+The project can be run locally using **Docker and npm**.
+
+For production, the architecture uses:
+
+```text
+Vercel
+   ↓
+React + Vite
+   ↓
+Render
+   ↓
+Node.js + Express + Socket.io
+   ↓
+Render PostgreSQL
+```
+
+This provides a continuously running backend suitable for WebSocket communication and scheduled background jobs while keeping the frontend and backend independently deployable.
